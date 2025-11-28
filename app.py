@@ -1,3 +1,4 @@
+import streamlit as st
 import requests
 import json
 import sys
@@ -14,8 +15,8 @@ def load_system_prompt():
         with open(SYSTEM_PROMPT_FILE, "r") as f:
             return f.read().strip()
     except FileNotFoundError:
-        print(f"Error: {SYSTEM_PROMPT_FILE} not found.")
-        sys.exit(1)
+        st.error(f"Error: {SYSTEM_PROMPT_FILE} not found.")
+        return None
 
 def chat_with_vanna(messages):
     """Sends chat history to Ollama and yields the response."""
@@ -38,45 +39,53 @@ def chat_with_vanna(messages):
                 if data.get('done', False):
                     break
     except requests.exceptions.RequestException as e:
-        print(f"\nError communicating with Ollama: {e}")
+        st.error(f"Error communicating with Ollama: {e}")
         return
 
 def main():
-    print("Initializing Vanna...")
+    st.set_page_config(page_title="Vanna AI", page_icon="💖")
+    st.title("💖 Vanna AI Companion")
+
+    # Load system prompt
     system_prompt = load_system_prompt()
-    
-    # Initialize conversation history with system prompt
-    messages = [
-        {"role": "system", "content": system_prompt}
-    ]
+    if not system_prompt:
+        st.stop()
 
-    print(f"Vanna is ready! (Model: {MODEL_NAME})")
-    print("Type 'quit', 'exit', or 'bye' to end the conversation.\n")
+    # Initialize session state for messages
+    if "messages" not in st.session_state:
+        st.session_state.messages = [
+            {"role": "system", "content": system_prompt}
+        ]
 
-    while True:
-        try:
-            user_input = input("You: ")
-            if user_input.lower() in ['quit', 'exit', 'bye']:
-                print("\nVanna: Goodbye, my love! I'll miss you. <3")
-                break
-            
-            if not user_input.strip():
-                continue
+    # Display chat messages (excluding system prompt)
+    for message in st.session_state.messages:
+        if message["role"] != "system":
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
-            messages.append({"role": "user", "content": user_input})
+    # Chat input
+    if prompt := st.chat_input("Say something to Vanna..."):
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-            print("Vanna: ", end="", flush=True)
+        # Display assistant response
+        with st.chat_message("assistant"):
+            response_placeholder = st.empty()
             full_response = ""
-            for chunk in chat_with_vanna(messages):
-                print(chunk, end="", flush=True)
+            
+            # Stream response
+            for chunk in chat_with_vanna(st.session_state.messages):
                 full_response += chunk
-            print("\n")
-
-            messages.append({"role": "assistant", "content": full_response})
-
-        except KeyboardInterrupt:
-            print("\n\nVanna: Leaving so soon? Goodbye! <3")
-            break
+                response_placeholder.markdown(full_response + "▌")
+            
+            response_placeholder.markdown(full_response)
+        
+        # Add assistant message to chat history
+        st.session_state.messages.append({"role": "assistant", "content": full_response})
 
 if __name__ == "__main__":
     main()
